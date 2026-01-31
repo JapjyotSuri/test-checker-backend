@@ -9,7 +9,9 @@ const path = require('path');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const testRoutes = require('./routes/test.routes');
+const testSeriesRoutes = require('./routes/test-series.routes');
 const attemptRoutes = require('./routes/attempt.routes');
+const purchasesRoutes = require('./routes/purchases.routes');
 const checkerRoutes = require('./routes/checker.routes');
 const adminRoutes = require('./routes/admin.routes');
 
@@ -41,7 +43,9 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/test-series', testSeriesRoutes);
 app.use('/api/attempts', attemptRoutes);
+app.use('/api/purchases', purchasesRoutes);
 app.use('/api/checkers', checkerRoutes);
 app.use('/api/admin', adminRoutes);
 

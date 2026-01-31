@@ -118,6 +118,19 @@ router.post('/', requireAuth, upload.single('pdf'), asyncHandler(async (req, res
     return res.status(404).json({ error: 'Test not found or not available' });
   }
 
+  const test = testResult.rows[0];
+
+  // If test belongs to a series, user must have purchased that series
+  if (test.test_series_id) {
+    const purchaseResult = await pool.query(
+      "SELECT id FROM purchases WHERE user_id = $1 AND test_series_id = $2 AND status = 'PAID'",
+      [req.user.id, test.test_series_id]
+    );
+    if (purchaseResult.rows.length === 0) {
+      return res.status(403).json({ error: 'You must purchase this test series before attempting' });
+    }
+  }
+
   // Check for existing attempt
   const existingResult = await pool.query(
     'SELECT id FROM attempts WHERE test_id = $1 AND user_id = $2',
