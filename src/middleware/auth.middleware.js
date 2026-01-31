@@ -30,22 +30,50 @@ const requireAuth = async (req, res, next) => {
     let user = result.rows[0];
 
     if (!user) {
-      // Fetch user details from Clerk and create in DB
+      // Fetch user details from Clerk
       const clerkUser = await clerk.users.getUser(sessionClaims.sub);
-      
-      result = await pool.query(`
-        INSERT INTO users (clerk_id, email, first_name, last_name, role)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *
-      `, [
-        sessionClaims.sub,
-        clerkUser.emailAddresses[0]?.emailAddress || '',
-        clerkUser.firstName,
-        clerkUser.lastName,
-        'USER'
-      ]);
-      
+      const email = (clerkUser.emailAddresses?.[0]?.emailAddress || '').trim().toLowerCase();
+
+      if (!email) {
+        return res.status(401).json({ error: 'Unauthorized - No email from Clerk' });
+      }
+
+      // Check if user already exists by email (e.g. created by webhook or previous sign-up)
+      result = await pool.query(
+        'SELECT * FROM users WHERE LOWER(email) = $1',
+        [email]
+      );
       user = result.rows[0];
+
+      if (user) {
+        // Link existing user to this Clerk account (update clerk_id)
+        result = await pool.query(`
+          UPDATE users SET clerk_id = $1, first_name = $2, last_name = $3, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $4
+          RETURNING *
+        `, [sessionClaims.sub, clerkUser.firstName, clerkUser.lastName, user.id]);
+        user = result.rows[0];
+        console.log('[Auth] Existing user linked to Clerk:', user.id, user.email);
+      } else {
+        // Insert or update by email (handles race: two requests at once, or duplicate from different clerk_id)
+        result = await pool.query(`
+          INSERT INTO users (clerk_id, email, first_name, last_name, role)
+          VALUES ($1, $2, $3, $4, 'USER')
+          ON CONFLICT (email) DO UPDATE SET
+            clerk_id = EXCLUDED.clerk_id,
+            first_name = EXCLUDED.first_name,
+            last_name = EXCLUDED.last_name,
+            updated_at = CURRENT_TIMESTAMP
+          RETURNING *
+        `, [
+          sessionClaims.sub,
+          email,
+          clerkUser.firstName,
+          clerkUser.lastName
+        ]);
+        user = result.rows[0];
+        console.log('[Auth] User synced in DB:', user.id, user.email);
+      }
     }
 
     if (!user.is_active) {
