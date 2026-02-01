@@ -80,60 +80,71 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 /**
- * POST /api/tests - Create a new test (Admin only)
+ * POST /api/tests - Create a new test (Admin only). Body/form: title, subject, description?, totalMarks?, duration?, status?, testSeriesId?; file: pdf
  */
 router.post('/', requireAuth, requireAdmin, upload.single('pdf'), asyncHandler(async (req, res) => {
-  const { title, description, totalMarks, duration, status } = req.body;
+  const { title, subject, description, totalMarks, duration, status, testSeriesId } = req.body;
 
   if (!req.file) {
     return res.status(400).json({ error: 'PDF file is required' });
   }
 
   const result = await pool.query(`
-    INSERT INTO tests (title, description, pdf_url, pdf_file_name, total_marks, duration, status, created_by_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    INSERT INTO tests (title, subject, description, pdf_url, pdf_file_name, total_marks, duration, status, created_by_id, test_series_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING *
   `, [
     title,
-    description,
+    subject || null,
+    description || null,
     `/uploads/tests/${req.file.filename}`,
     req.file.originalname,
     parseInt(totalMarks) || 100,
     duration ? parseInt(duration) : null,
     status || 'DRAFT',
-    req.user.id
+    req.user.id,
+    testSeriesId || null
   ]);
 
   res.status(201).json({ test: result.rows[0] });
 }));
 
 /**
- * PUT /api/tests/:id - Update test (Admin only)
+ * PUT /api/tests/:id - Update test (Admin only). Body/form: title?, subject?, description?, totalMarks?, duration?, status?; file?: pdf
  */
 router.put('/:id', requireAuth, requireAdmin, upload.single('pdf'), asyncHandler(async (req, res) => {
-  const { title, description, totalMarks, duration, status } = req.body;
+  const { title, subject, description, totalMarks, duration, status } = req.body;
 
   let query, params;
 
   if (req.file) {
     query = `
-      UPDATE tests SET title = $1, description = $2, total_marks = $3, duration = $4, 
-        status = $5, pdf_url = $6, pdf_file_name = $7
-      WHERE id = $8 RETURNING *
+      UPDATE tests SET title = COALESCE($1, title), subject = COALESCE($2, subject), description = COALESCE($3, description),
+        total_marks = COALESCE($4, total_marks), duration = $5, status = COALESCE($6, status),
+        pdf_url = $7, pdf_file_name = $8
+      WHERE id = $9 RETURNING *
     `;
     params = [
-      title, description, parseInt(totalMarks), duration ? parseInt(duration) : null,
-      status, `/uploads/tests/${req.file.filename}`, req.file.originalname, req.params.id
+      title, subject, description, totalMarks != null ? parseInt(totalMarks) : null,
+      duration != null ? parseInt(duration) : null, status,
+      `/uploads/tests/${req.file.filename}`, req.file.originalname, req.params.id
     ];
   } else {
     query = `
-      UPDATE tests SET title = $1, description = $2, total_marks = $3, duration = $4, status = $5
-      WHERE id = $6 RETURNING *
+      UPDATE tests SET title = COALESCE($1, title), subject = COALESCE($2, subject), description = COALESCE($3, description),
+        total_marks = COALESCE($4, total_marks), duration = $5, status = COALESCE($6, status)
+      WHERE id = $7 RETURNING *
     `;
-    params = [title, description, parseInt(totalMarks), duration ? parseInt(duration) : null, status, req.params.id];
+    params = [
+      title, subject, description, totalMarks != null ? parseInt(totalMarks) : null,
+      duration != null ? parseInt(duration) : null, status, req.params.id
+    ];
   }
 
   const result = await pool.query(query, params);
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Test not found' });
+  }
   res.json({ test: result.rows[0] });
 }));
 

@@ -77,7 +77,7 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const testsResult = await pool.query(`
-    SELECT id, title, description, total_marks, duration, status
+    SELECT id, title, subject, description, pdf_url, pdf_file_name, total_marks, duration, status
     FROM tests
     WHERE test_series_id = $1
     ORDER BY created_at ASC

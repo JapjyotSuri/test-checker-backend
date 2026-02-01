@@ -145,7 +145,7 @@ router.post('/', requireAuth, upload.single('pdf'), asyncHandler(async (req, res
     INSERT INTO attempts (test_id, user_id, submitted_pdf_url, submitted_pdf_name, status)
     VALUES ($1, $2, $3, $4, 'PENDING')
     RETURNING *
-  `, [testId, req.user.id, `/uploads/attempts/${req.file.filename}`, req.file.originalname]);
+  `, [testId, req.user.id, `/uploads/answer_sheet/${req.file.filename}`, req.file.originalname]);
 
   res.status(201).json({ attempt: result.rows[0] });
 }));

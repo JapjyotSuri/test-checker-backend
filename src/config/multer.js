@@ -18,7 +18,7 @@ const storage = multer.diskStorage({
     if (req.baseUrl.includes('tests')) {
       uploadPath = path.join(uploadsDir, 'tests');
     } else if (req.baseUrl.includes('attempts')) {
-      uploadPath = path.join(uploadsDir, 'attempts');
+      uploadPath = path.join(uploadsDir, 'answer_sheet');
     }
     
     if (!fs.existsSync(uploadPath)) {

@@ -6,6 +6,8 @@
     "dev": "nodemon src/app.js",
     "start": "node src/app.js",
     "db:migrate": "node db/migrate.js",
+    "db:migrate-series": "node db/migrate-series.js",
+    "db:migrate-tests-subject": "node db/migrate-tests-subject.js",
     "db:seed": "node db/seed.js"
   },
   "keywords": [],
