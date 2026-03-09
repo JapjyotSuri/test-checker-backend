@@ -8,6 +8,8 @@
     "db:migrate": "node db/migrate.js",
     "db:migrate-series": "node db/migrate-series.js",
     "db:migrate-tests-subject": "node db/migrate-tests-subject.js",
+    "db:migrate-tests-answer": "node db/migrate-tests-answer.js",
+    "db:migrate-attempts-checked": "node db/migrate-attempts-checked.js",
     "db:seed": "node db/seed.js"
   },
   "keywords": [],

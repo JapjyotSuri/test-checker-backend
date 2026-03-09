@@ -177,7 +177,7 @@ router.post('/:id/claim', requireAuth, requireChecker, asyncHandler(async (req, 
 /**
  * PUT /api/attempts/:id/grade - Checker grades an attempt
  */
-router.put('/:id/grade', requireAuth, requireChecker, asyncHandler(async (req, res) => {
+router.put('/:id/grade', requireAuth, requireChecker, upload.single('checkedPdf'), asyncHandler(async (req, res) => {
   const { obtainedMarks, feedback } = req.body;
 
   const checkResult = await pool.query(`
@@ -200,12 +200,20 @@ router.put('/:id/grade', requireAuth, requireChecker, asyncHandler(async (req, r
     return res.status(400).json({ error: `Marks must be between 0 and ${attempt.total_marks}` });
   }
 
+  let checkedUrl = null;
+  let checkedName = null;
+  if (req.file) {
+    checkedUrl = `/uploads/answer_sheet/${req.file.filename}`;
+    checkedName = req.file.originalname;
+  }
+
   const result = await pool.query(`
     UPDATE attempts 
     SET obtained_marks = $1, feedback = $2, status = 'COMPLETED', 
-        checked_at = CURRENT_TIMESTAMP, checker_id = COALESCE(checker_id, $3)
+        checked_at = CURRENT_TIMESTAMP, checker_id = COALESCE(checker_id, $3),
+        checked_pdf_url = COALESCE($5, checked_pdf_url), checked_pdf_name = COALESCE($6, checked_pdf_name)
     WHERE id = $4 RETURNING *
-  `, [parseInt(obtainedMarks), feedback, req.user.id, req.params.id]);
+  `, [parseInt(obtainedMarks), feedback, req.user.id, req.params.id, checkedUrl, checkedName]);
 
   res.json({ attempt: result.rows[0] });
 }));
@@ -224,6 +232,25 @@ router.put('/:id/reject', requireAuth, requireChecker, asyncHandler(async (req, 
   `, [feedback, req.user.id, req.params.id]);
 
   res.json({ attempt: result.rows[0] });
+}));
+
+/**
+ * GET /api/attempts/:id/checked - Get the checked PDF (student, checker, or admin)
+ */
+router.get('/:id/checked', requireAuth, asyncHandler(async (req, res) => {
+  const result = await pool.query('SELECT * FROM attempts WHERE id = $1', [req.params.id]);
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Attempt not found' });
+  }
+  const attempt = result.rows[0];
+  if (!attempt.checked_pdf_url) {
+    return res.status(404).json({ error: 'Checked sheet not available' });
+  }
+  // Student must be owner; checker/admin allowed
+  if (req.user.role === 'USER' && attempt.user_id !== req.user.id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  res.json({ downloadUrl: attempt.checked_pdf_url, fileName: attempt.checked_pdf_name });
 }));
 
 module.exports = router;
