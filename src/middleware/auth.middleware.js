@@ -90,6 +90,66 @@ const requireAuth = async (req, res, next) => {
 };
 
 /**
+ * Optional auth: if Authorization header present, verify and attach user.
+ * Otherwise continue without user (useful for public endpoints where published content is visible).
+ */
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      req.user = null;
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    const sessionClaims = await clerk.verifyToken(token);
+    if (!sessionClaims) {
+      req.user = null;
+      return next();
+    }
+
+    // Find user in database
+    let result = await pool.query(
+      'SELECT * FROM users WHERE clerk_id = $1',
+      [sessionClaims.sub]
+    );
+
+    let user = result.rows[0];
+    if (!user) {
+      // Try to find by email and link
+      const clerkUser = await clerk.users.getUser(sessionClaims.sub);
+      const email = (clerkUser.emailAddresses?.[0]?.emailAddress || '').trim().toLowerCase();
+      if (email) {
+        result = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
+        user = result.rows[0];
+        if (user) {
+          result = await pool.query(`
+            UPDATE users SET clerk_id = $1, first_name = $2, last_name = $3, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $4
+            RETURNING *
+          `, [sessionClaims.sub, clerkUser.firstName, clerkUser.lastName, user.id]);
+          user = result.rows[0];
+        }
+      }
+    }
+
+    if (user && !user.is_active) {
+      // treat as no user but do not block public access here
+      req.user = null;
+      return next();
+    }
+
+    req.user = user || null;
+    req.clerkUserId = sessionClaims.sub;
+    next();
+  } catch (error) {
+    console.error('OptionalAuth error:', error.message || error);
+    req.user = null;
+    next();
+  }
+};
+
+/**
  * Require specific role(s)
  */
 const requireRole = (...roles) => {
@@ -112,6 +172,7 @@ const requireUser = requireRole('USER', 'CHECKER', 'ADMIN');
 
 module.exports = {
   requireAuth,
+  optionalAuth,
   requireRole,
   requireAdmin,
   requireChecker,

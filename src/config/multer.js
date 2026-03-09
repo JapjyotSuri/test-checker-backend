@@ -19,6 +19,9 @@ const storage = multer.diskStorage({
       uploadPath = path.join(uploadsDir, 'tests');
     } else if (req.baseUrl.includes('attempts')) {
       uploadPath = path.join(uploadsDir, 'answer_sheet');
+    } else if (req.baseUrl.includes('test-series')) {
+      // images for test series
+      uploadPath = path.join(uploadsDir, 'series');
     }
     
     if (!fs.existsSync(uploadPath)) {
@@ -33,13 +36,23 @@ const storage = multer.diskStorage({
   }
 });
 
-// File filter - only allow PDFs
+// File filter - allow PDFs for tests/attempts and images for series
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype === 'application/pdf') {
-    cb(null, true);
-  } else {
-    cb(new Error('Only PDF files are allowed'), false);
+  // tests and attempts expect PDFs
+  if (req.baseUrl.includes('tests') || req.baseUrl.includes('attempts')) {
+    if (file.mimetype === 'application/pdf') return cb(null, true);
+    return cb(new Error('Only PDF files are allowed for tests/attempts'), false);
   }
+
+  // series images - allow common image types
+  if (req.baseUrl.includes('test-series')) {
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    return cb(new Error('Only image files (png, jpg, webp) are allowed for series images'), false);
+  }
+
+  // default: reject
+  return cb(new Error('Unsupported upload destination'), false);
 };
 
 const upload = multer({

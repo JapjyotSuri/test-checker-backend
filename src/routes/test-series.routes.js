@@ -1,20 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const { asyncHandler } = require('../middleware/error.middleware');
-const { requireAuth, requireAdmin } = require('../middleware/auth.middleware');
+const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth.middleware');
+const upload = require('../config/multer');
 const { pool } = require('../config/database');
 
 /**
  * GET /api/test-series - List test series
  * Students: published only (browse). Admin: all.
  */
-router.get('/', requireAuth, asyncHandler(async (req, res) => {
+router.get('/', optionalAuth, asyncHandler(async (req, res) => {
   const { status, page = 1, limit = 20 } = req.query;
   const offset = (page - 1) * limit;
   const params = [];
   let whereClause = '';
 
-  if (req.user.role === 'USER') {
+  const role = req.user ? req.user.role : 'USER';
+  if (role === 'USER') {
     whereClause = "WHERE ts.status = 'PUBLISHED'";
   } else if (status) {
     whereClause = 'WHERE ts.status = $1';
@@ -57,7 +59,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 /**
  * GET /api/test-series/:id - Get single test series with tests
  */
-router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
   const seriesResult = await pool.query(`
     SELECT ts.*,
       json_build_object('id', u.id, 'first_name', u.first_name, 'last_name', u.last_name) as created_by
@@ -72,7 +74,8 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
 
   const series = seriesResult.rows[0];
 
-  if (req.user.role === 'USER' && series.status !== 'PUBLISHED') {
+  const role = req.user ? req.user.role : 'USER';
+  if (role === 'USER' && series.status !== 'PUBLISHED') {
     return res.status(403).json({ error: 'Test series not available' });
   }
 
@@ -91,12 +94,16 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
 /**
  * POST /api/test-series - Create test series (Admin)
  */
-router.post('/', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const { title, description, price, numberOfTests, subject, status } = req.body;
+router.post('/', requireAuth, requireAdmin, upload.single('image'), asyncHandler(async (req, res) => {
+  const { title, description, price, numberOfTests, subject, status, category } = req.body;
+  let imageUrl = null;
+  if (req.file) {
+    imageUrl = `/uploads/series/${req.file.filename}`;
+  }
 
   const result = await pool.query(`
-    INSERT INTO test_series (title, description, price, number_of_tests, subject, status, created_by_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    INSERT INTO test_series (title, description, price, number_of_tests, subject, status, category, image_url, created_by_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     RETURNING *
   `, [
     title,
@@ -105,6 +112,8 @@ router.post('/', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     parseInt(numberOfTests) || 1,
     subject || null,
     status || 'DRAFT',
+    category || 'FOUNDATION',
+    imageUrl,
     req.user.id
   ]);
 
@@ -114,15 +123,20 @@ router.post('/', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
 /**
  * PUT /api/test-series/:id - Update test series (Admin)
  */
-router.put('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const { title, description, price, numberOfTests, subject, status } = req.body;
+router.put('/:id', requireAuth, requireAdmin, upload.single('image'), asyncHandler(async (req, res) => {
+  const { title, description, price, numberOfTests, subject, status, category } = req.body;
+  let imageUrl = null;
+  if (req.file) {
+    imageUrl = `/uploads/series/${req.file.filename}`;
+  }
 
   const result = await pool.query(`
     UPDATE test_series
     SET title = COALESCE($1, title), description = COALESCE($2, description),
         price = COALESCE($3, price), number_of_tests = COALESCE($4, number_of_tests),
-        subject = COALESCE($5, subject), status = COALESCE($6, status)
-    WHERE id = $7
+        subject = COALESCE($5, subject), status = COALESCE($6, status),
+        category = COALESCE($7, category), image_url = COALESCE($8, image_url)
+    WHERE id = $9
     RETURNING *
   `, [
     title,
@@ -131,6 +145,8 @@ router.put('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     numberOfTests != null ? parseInt(numberOfTests) : null,
     subject,
     status,
+    category,
+    imageUrl,
     req.params.id
   ]);
 

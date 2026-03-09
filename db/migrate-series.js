@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS test_series (
   price DECIMAL(10, 2) NOT NULL DEFAULT 0,
   number_of_tests INTEGER NOT NULL DEFAULT 1,
   subject VARCHAR(255),
+  -- category enum: FOUNDATION / INTER / FINAL
+  category VARCHAR(50) DEFAULT 'FOUNDATION',
+  -- optional image for series (served from /uploads/series/...)
+  image_url VARCHAR(500),
   status VARCHAR(50) DEFAULT 'DRAFT',
   created_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -36,6 +40,11 @@ CREATE TABLE IF NOT EXISTS purchases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_test_series_status ON test_series(status);
+-- If the table already existed before adding these fields, add them safely
+ALTER TABLE test_series ADD COLUMN IF NOT EXISTS category VARCHAR(50) DEFAULT 'FOUNDATION';
+ALTER TABLE test_series ADD COLUMN IF NOT EXISTS image_url VARCHAR(500);
+CREATE INDEX IF NOT EXISTS idx_test_series_category ON test_series(category);
+CREATE INDEX IF NOT EXISTS idx_test_series_category ON test_series(category);
 CREATE INDEX IF NOT EXISTS idx_tests_series ON tests(test_series_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_series ON purchases(test_series_id);
