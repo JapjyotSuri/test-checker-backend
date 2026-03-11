@@ -15,6 +15,7 @@ const purchasesRoutes = require('./routes/purchases.routes');
 const checkerRoutes = require('./routes/checker.routes');
 const adminRoutes = require('./routes/admin.routes');
 const debugRoutes = require('./routes/debug.routes');
+const couponRoutes = require('./routes/coupon.routes');
 
 // Import middleware
 const { errorHandler } = require('./middleware/error.middleware');
@@ -59,6 +60,7 @@ app.use('/api/attempts', attemptRoutes);
 app.use('/api/purchases', purchasesRoutes);
 app.use('/api/checkers', checkerRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/coupons', couponRoutes);
 // Developer-only debug endpoints (no auth) — remove or protect in production
 app.use('/api/debug', debugRoutes);
 

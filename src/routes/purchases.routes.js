@@ -74,7 +74,7 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'Only students can purchase test series' });
   }
 
-  const { testSeriesId, paymentReference } = req.body;
+  const { testSeriesId, paymentReference, couponCode } = req.body;
 
   const seriesResult = await pool.query(
     "SELECT * FROM test_series WHERE id = $1 AND status = 'PUBLISHED'",
@@ -86,6 +86,21 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const series = seriesResult.rows[0];
+  let amount = parseFloat(series.price);
+  let appliedCode = null;
+  let discountPercent = null;
+
+  if (couponCode) {
+    const code = String(couponCode).toUpperCase();
+    const couponRes = await pool.query("SELECT * FROM coupons WHERE code = $1 AND active = true", [code]);
+    if (couponRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or inactive coupon' });
+    }
+    const coupon = couponRes.rows[0];
+    discountPercent = parseInt(coupon.discount_percent);
+    appliedCode = coupon.code;
+    amount = Math.max(0, Math.round((amount * (100 - discountPercent)) ) / 100);
+  }
 
   const existing = await pool.query(
     'SELECT id FROM purchases WHERE user_id = $1 AND test_series_id = $2 AND status = $3',
@@ -97,10 +112,10 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const result = await pool.query(`
-    INSERT INTO purchases (user_id, test_series_id, amount, status, payment_reference)
-    VALUES ($1, $2, $3, 'PAID', $4)
+    INSERT INTO purchases (user_id, test_series_id, amount, status, payment_reference, coupon_code, discount_percent)
+    VALUES ($1, $2, $3, 'PAID', $4, $5, $6)
     RETURNING *
-  `, [req.user.id, testSeriesId, series.price, paymentReference || null]);
+  `, [req.user.id, testSeriesId, amount, paymentReference || null, appliedCode, discountPercent]);
 
   const purchase = result.rows[0];
   purchase.test_series = series;

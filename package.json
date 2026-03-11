@@ -10,6 +10,7 @@
     "db:migrate-tests-subject": "node db/migrate-tests-subject.js",
     "db:migrate-tests-answer": "node db/migrate-tests-answer.js",
     "db:migrate-attempts-checked": "node db/migrate-attempts-checked.js",
+    "db:migrate-coupons": "node db/migrate-coupons.js",
     "db:seed": "node db/seed.js"
   },
   "keywords": [],
