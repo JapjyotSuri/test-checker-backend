@@ -84,6 +84,10 @@ router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
  */
 router.post('/', requireAuth, requireAdmin, upload.fields([{ name: 'pdf', maxCount: 1 }, { name: 'answerPdf', maxCount: 1 }]), asyncHandler(async (req, res) => {
   const { title, subject, description, totalMarks, duration, status, testSeriesId } = req.body;
+  const normalizedStatus = String(status || '').toUpperCase();
+  const finalStatus = ['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(normalizedStatus)
+    ? normalizedStatus
+    : 'PUBLISHED';
 
   const questionFile = Array.isArray(req.files?.pdf) ? req.files.pdf[0] : null;
   if (!questionFile) {
@@ -105,7 +109,7 @@ router.post('/', requireAuth, requireAdmin, upload.fields([{ name: 'pdf', maxCou
     answerFile ? answerFile.originalname : null,
     parseInt(totalMarks) || 100,
     duration ? parseInt(duration) : null,
-    status || 'DRAFT',
+    finalStatus,
     req.user.id,
     testSeriesId || null
   ]);

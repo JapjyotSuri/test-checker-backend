@@ -133,9 +133,9 @@ router.get('/my-series', requireAuth, asyncHandler(async (req, res) => {
 
   const result = await pool.query(`
     SELECT ts.id, ts.title, ts.description, ts.number_of_tests, ts.subject,
-      (SELECT COUNT(*) FROM tests t WHERE t.test_series_id = ts.id) as actual_test_count,
+      (SELECT COUNT(*) FROM tests t WHERE t.test_series_id = ts.id AND t.status = 'PUBLISHED') as actual_test_count,
       (SELECT COUNT(*) FROM attempts a
-       JOIN tests t ON t.id = a.test_id AND t.test_series_id = ts.id
+       JOIN tests t ON t.id = a.test_id AND t.test_series_id = ts.id AND t.status = 'PUBLISHED'
        WHERE a.user_id = $1) as completed_count
     FROM test_series ts
     JOIN purchases p ON p.test_series_id = ts.id AND p.user_id = $1 AND p.status = 'PAID'

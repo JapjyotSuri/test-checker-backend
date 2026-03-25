@@ -83,8 +83,9 @@ router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
     SELECT id, title, subject, description, pdf_url, pdf_file_name, total_marks, duration, status
     FROM tests
     WHERE test_series_id = $1
+      AND ($2::text != 'USER' OR status = 'PUBLISHED')
     ORDER BY created_at ASC
-  `, [req.params.id]);
+  `, [req.params.id, role]);
 
   series.tests = testsResult.rows;
 
