@@ -40,6 +40,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', (req, res, next) => {
   // Remove Helmet's X-Frame-Options for uploads so the file can be embedded from a different origin
   res.removeHeader('X-Frame-Options');
+  // Allow cross-origin loading of images/files (frontend is on a different port)
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   // Allow the local frontend origin to embed files. In production, lock this down or remove.
   const frontend = process.env.FRONTEND_URL || 'http://localhost:3000';
   res.setHeader('Content-Security-Policy', `frame-ancestors ${frontend}`);
