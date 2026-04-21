@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { asyncHandler } = require('../middleware/error.middleware');
 const { requireAuth, requireAdmin } = require('../middleware/auth.middleware');
+const { validateUUID } = require('../utils/validation');
 const { pool } = require('../config/database');
 const upload = require('../config/multer');
 
@@ -57,7 +58,7 @@ router.get('/', requireAuth, asyncHandler(async (req, res) => {
 /**
  * GET /api/tests/:id - Get test by ID
  */
-router.get('/:id', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id', validateUUID(), requireAuth, asyncHandler(async (req, res) => {
   const result = await pool.query(`
     SELECT t.*, 
       json_build_object('id', u.id, 'first_name', u.first_name, 'last_name', u.last_name) as created_by
@@ -120,7 +121,7 @@ router.post('/', requireAuth, requireAdmin, upload.fields([{ name: 'pdf', maxCou
 /**
  * PUT /api/tests/:id - Update test (Admin only). Body/form: title?, subject?, description?, totalMarks?, duration?, status?; file?: pdf
  */
-router.put('/:id', requireAuth, requireAdmin, upload.fields([{ name: 'pdf', maxCount: 1 }, { name: 'answerPdf', maxCount: 1 }]), asyncHandler(async (req, res) => {
+router.put('/:id', validateUUID(), requireAuth, requireAdmin, upload.fields([{ name: 'pdf', maxCount: 1 }, { name: 'answerPdf', maxCount: 1 }]), asyncHandler(async (req, res) => {
   const { title, subject, description, totalMarks, duration, status } = req.body;
 
   const questionFile = Array.isArray(req.files?.pdf) ? req.files.pdf[0] : null;
@@ -167,7 +168,7 @@ router.put('/:id', requireAuth, requireAdmin, upload.fields([{ name: 'pdf', maxC
 /**
  * DELETE /api/tests/:id - Delete test (Admin only)
  */
-router.delete('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+router.delete('/:id', validateUUID(), requireAuth, requireAdmin, asyncHandler(async (req, res) => {
   await pool.query('DELETE FROM tests WHERE id = $1', [req.params.id]);
   res.json({ message: 'Test deleted successfully' });
 }));
@@ -175,7 +176,7 @@ router.delete('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) =
 /**
  * GET /api/tests/:id/download - Download test PDF
  */
-router.get('/:id/download', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/download', validateUUID(), requireAuth, asyncHandler(async (req, res) => {
   const result = await pool.query('SELECT * FROM tests WHERE id = $1', [req.params.id]);
 
   if (result.rows.length === 0) {
@@ -195,7 +196,7 @@ router.get('/:id/download', requireAuth, asyncHandler(async (req, res) => {
  * GET /api/tests/:id/answer - Download answer PDF (restricted)
  * Users: only if they have a COMPLETED attempt for this test. Admin/Checker: allowed.
  */
-router.get('/:id/answer', requireAuth, asyncHandler(async (req, res) => {
+router.get('/:id/answer', validateUUID(), requireAuth, asyncHandler(async (req, res) => {
   const result = await pool.query('SELECT id, answer_pdf_url, answer_pdf_file_name FROM tests WHERE id = $1', [req.params.id]);
   if (result.rows.length === 0) {
     return res.status(404).json({ error: 'Test not found' });

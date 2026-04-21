@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { asyncHandler } = require('../middleware/error.middleware');
 const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth.middleware');
+const { validateUUID } = require('../utils/validation');
 const upload = require('../config/multer');
 const { pool } = require('../config/database');
 
@@ -59,14 +60,16 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
 /**
  * GET /api/test-series/:id - Get single test series with tests
  */
-router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
+router.get('/:id', validateUUID(), optionalAuth, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
   const seriesResult = await pool.query(`
     SELECT ts.*,
       json_build_object('id', u.id, 'first_name', u.first_name, 'last_name', u.last_name) as created_by
     FROM test_series ts
     LEFT JOIN users u ON u.id = ts.created_by_id
     WHERE ts.id = $1
-  `, [req.params.id]);
+  `, [id]);
 
   if (seriesResult.rows.length === 0) {
     return res.status(404).json({ error: 'Test series not found' });
@@ -85,7 +88,7 @@ router.get('/:id', optionalAuth, asyncHandler(async (req, res) => {
     WHERE test_series_id = $1
       AND ($2::text != 'USER' OR status = 'PUBLISHED')
     ORDER BY created_at ASC
-  `, [req.params.id, role]);
+  `, [id, role]);
 
   series.tests = testsResult.rows;
 
@@ -124,7 +127,9 @@ router.post('/', requireAuth, requireAdmin, upload.single('image'), asyncHandler
 /**
  * PUT /api/test-series/:id - Update test series (Admin)
  */
-router.put('/:id', requireAuth, requireAdmin, upload.single('image'), asyncHandler(async (req, res) => {
+router.put('/:id', validateUUID(), requireAuth, requireAdmin, upload.single('image'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
   const { title, description, price, numberOfTests, subject, status, category } = req.body;
   let imageUrl = null;
   if (req.file) {
@@ -148,7 +153,7 @@ router.put('/:id', requireAuth, requireAdmin, upload.single('image'), asyncHandl
     status,
     category,
     imageUrl,
-    req.params.id
+    id
   ]);
 
   if (result.rows.length === 0) {
@@ -161,8 +166,10 @@ router.put('/:id', requireAuth, requireAdmin, upload.single('image'), asyncHandl
 /**
  * DELETE /api/test-series/:id - Delete test series (Admin)
  */
-router.delete('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-  const result = await pool.query('DELETE FROM test_series WHERE id = $1 RETURNING id', [req.params.id]);
+router.delete('/:id', validateUUID(), requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await pool.query('DELETE FROM test_series WHERE id = $1 RETURNING id', [id]);
   if (result.rows.length === 0) {
     return res.status(404).json({ error: 'Test series not found' });
   }
@@ -172,25 +179,33 @@ router.delete('/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) =
 /**
  * PUT /api/test-series/:id/link-tests - Link tests to series (Admin). Body: { testIds: string[] }
  */
-router.put('/:id/link-tests', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+router.put('/:id/link-tests', validateUUID(), requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    return res.status(404).json({ error: 'Test series not found' });
+  }
+
   const { testIds } = req.body;
   if (!Array.isArray(testIds)) {
     return res.status(400).json({ error: 'testIds must be an array' });
   }
 
-  await pool.query('UPDATE tests SET test_series_id = NULL WHERE test_series_id = $1', [req.params.id]);
+  await pool.query('UPDATE tests SET test_series_id = NULL WHERE test_series_id = $1', [id]);
 
   if (testIds.length > 0) {
     const placeholders = testIds.map((_, i) => `$${i + 2}`).join(', ');
     await pool.query(
       `UPDATE tests SET test_series_id = $1 WHERE id IN (${placeholders})`,
-      [req.params.id, ...testIds]
+      [id, ...testIds]
     );
   }
 
   const result = await pool.query(
     'SELECT id, title FROM tests WHERE test_series_id = $1',
-    [req.params.id]
+    [id]
   );
   res.json({ tests: result.rows });
 }));
