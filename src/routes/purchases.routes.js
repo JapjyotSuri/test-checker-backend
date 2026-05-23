@@ -131,6 +131,24 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'You have already purchased this test series' });
   }
 
+  // If amount is 0 (100% discount), create purchase directly without payment
+  if (amount === 0) {
+    const result = await pool.query(`
+      INSERT INTO purchases (user_id, test_series_id, amount, status, payment_reference, coupon_code, discount_percent)
+      VALUES ($1, $2, 0, 'PAID', 'FREE_COUPON', $3, $4)
+      RETURNING *
+    `, [req.user.id, testSeriesId, appliedCode, discountPercent]);
+
+    const purchase = result.rows[0];
+    purchase.test_series = series;
+
+    return res.status(201).json({
+      purchase,
+      message: 'Free access granted! No payment required.',
+      isFree: true
+    });
+  }
+
   const result = await pool.query(`
     INSERT INTO purchases (user_id, test_series_id, amount, status, payment_reference, coupon_code, discount_percent)
     VALUES ($1, $2, $3, 'PAID', $4, $5, $6)
@@ -182,6 +200,24 @@ router.post('/razorpay/order', requireAuth, asyncHandler(async (req, res) => {
     amount = applyCouponDiscount(amount, discountPercent);
   }
 
+  // If amount is 0 (100% discount), skip Razorpay and create purchase directly
+  if (amount === 0) {
+    const result = await pool.query(`
+      INSERT INTO purchases (user_id, test_series_id, amount, status, payment_reference, coupon_code, discount_percent)
+      VALUES ($1, $2, 0, 'PAID', 'FREE_COUPON', $3, $4)
+      RETURNING *
+    `, [req.user.id, testSeriesId, appliedCode, discountPercent]);
+
+    const purchase = result.rows[0];
+    purchase.test_series = series;
+
+    return res.status(201).json({
+      purchase,
+      message: 'Free access granted! No payment required.',
+      isFree: true
+    });
+  }
+
   const razorpay = new Razorpay({
     key_id: keyId,
     key_secret: keySecret,
@@ -208,6 +244,7 @@ router.post('/razorpay/order', requireAuth, asyncHandler(async (req, res) => {
     discountPercent,
     couponCode: appliedCode,
     seriesTitle: series.title,
+    isFree: false
   });
 }));
 
