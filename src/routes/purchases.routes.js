@@ -3,11 +3,39 @@ const router = express.Router();
 const { asyncHandler } = require('../middleware/error.middleware');
 const { requireAuth, requireAdmin } = require('../middleware/auth.middleware');
 const { pool } = require('../config/database');
+const { sendPurchaseConfirmationEmail } = require('../config/mailer');
 const crypto = require('crypto');
 const Razorpay = require('razorpay');
 
 function applyCouponDiscount(amount, discountPercent) {
   return Math.max(0, Math.round(amount * (100 - discountPercent)) / 100);
+}
+
+async function sendConfirmationEmail(userId, testSeriesId, amount, discountPercent, originalPrice) {
+  try {
+    // Get user details
+    const userRes = await pool.query('SELECT first_name, email FROM users WHERE id = $1', [userId]);
+    if (userRes.rows.length === 0) return;
+    const user = userRes.rows[0];
+
+    // Get series details
+    const seriesRes = await pool.query('SELECT title FROM test_series WHERE id = $1', [testSeriesId]);
+    if (seriesRes.rows.length === 0) return;
+    const series = seriesRes.rows[0];
+
+    // Send email
+    await sendPurchaseConfirmationEmail(
+      user.email,
+      user.first_name,
+      series.title,
+      amount,
+      discountPercent || 0,
+      originalPrice
+    );
+  } catch (error) {
+    console.error('[Purchase] Error sending confirmation email:', error.message);
+    // Don't throw - email failure shouldn't block purchase
+  }
 }
 
 async function getPublishedSeries(testSeriesId) {
@@ -142,6 +170,9 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
     const purchase = result.rows[0];
     purchase.test_series = series;
 
+    // Send confirmation email
+    await sendConfirmationEmail(req.user.id, testSeriesId, 0, discountPercent, parseFloat(series.price));
+
     return res.status(201).json({
       purchase,
       message: 'Free access granted! No payment required.',
@@ -157,6 +188,9 @@ router.post('/', requireAuth, asyncHandler(async (req, res) => {
 
   const purchase = result.rows[0];
   purchase.test_series = series;
+
+  // Send confirmation email
+  await sendConfirmationEmail(req.user.id, testSeriesId, amount, discountPercent, parseFloat(series.price));
 
   res.status(201).json({ purchase });
 }));
@@ -313,6 +347,10 @@ router.post('/razorpay/confirm', requireAuth, asyncHandler(async (req, res) => {
 
   const purchase = result.rows[0];
   purchase.test_series = series;
+
+  // Send confirmation email
+  await sendConfirmationEmail(req.user.id, testSeriesId, amount, discountPercent, parseFloat(series.price));
+
   res.status(201).json({ purchase });
 }));
 
@@ -337,6 +375,55 @@ router.get('/my-series', requireAuth, asyncHandler(async (req, res) => {
   `, [req.user.id]);
 
   res.json({ series: result.rows });
+}));
+
+/**
+ * POST /api/purchases/admin/grant - Admin grants free access to student
+ * Body: { userId, testSeriesId }
+ */
+router.post('/admin/grant', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const { userId, testSeriesId } = req.body;
+
+  if (!userId || !testSeriesId) {
+    return res.status(400).json({ error: 'userId and testSeriesId are required' });
+  }
+
+  // Check if series exists and is published
+  const series = await getPublishedSeries(testSeriesId);
+  if (!series) {
+    return res.status(404).json({ error: 'Test series not found or not available' });
+  }
+
+  // Check if user exists
+  const userResult = await pool.query('SELECT id, first_name, last_name, email FROM users WHERE id = $1', [userId]);
+  if (userResult.rows.length === 0) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  const user = userResult.rows[0];
+
+  // Check if student already has access
+  if (await hasPaidPurchase(userId, testSeriesId)) {
+    return res.status(400).json({ error: 'Student already has access to this test series' });
+  }
+
+  // Grant free access (100% discount)
+  const result = await pool.query(`
+    INSERT INTO purchases (user_id, test_series_id, amount, status, payment_reference, coupon_code, discount_percent)
+    VALUES ($1, $2, 0, 'PAID', 'ADMIN_GRANT', 'ADMIN_GRANT_100', 100)
+    RETURNING *
+  `, [userId, testSeriesId]);
+
+  const purchase = result.rows[0];
+
+  // Send confirmation email
+  await sendConfirmationEmail(userId, testSeriesId, 0, 100, parseFloat(series.price));
+
+  res.status(201).json({
+    message: `Free access granted to ${user.first_name} ${user.last_name}`,
+    purchase,
+    student: user,
+    series: { id: series.id, title: series.title, price: series.price }
+  });
 }));
 
 module.exports = router;
