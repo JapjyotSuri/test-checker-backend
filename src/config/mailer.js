@@ -6,6 +6,11 @@ const getTransporter = async () => {
   if (transporter) return transporter;
 
   if (process.env.SMTP_HOST) {
+    console.log('[Mailer] Initializing Gmail SMTP transporter...');
+    console.log('[Mailer] SMTP Host:', process.env.SMTP_HOST);
+    console.log('[Mailer] SMTP Port:', process.env.SMTP_PORT);
+    console.log('[Mailer] SMTP User:', process.env.SMTP_USER);
+    
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '587'),
@@ -15,6 +20,14 @@ const getTransporter = async () => {
         pass: process.env.SMTP_PASS,
       },
     });
+
+    // Verify connection
+    try {
+      await transporter.verify();
+      console.log('[Mailer] ✓ SMTP connection verified successfully');
+    } catch (error) {
+      console.error('[Mailer] ✗ SMTP connection failed:', error.message);
+    }
   } else {
     const testAccount = await nodemailer.createTestAccount();
     transporter = nodemailer.createTransport({
@@ -47,12 +60,14 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
     ? 'Use the code below to reset your password:'
     : 'Use the code below to verify your email:';
 
-  const info = await transport.sendMail({
-    from: `"Ca Prep Series" <${process.env.SMTP_USER}>`,
-    to: email,
-    subject,
-    text: `Your OTP is: ${otp}\n\nThis code expires in 10 minutes. Do not share it with anyone.`,
-    html: `
+  try {
+    console.log(`[Mailer] Sending OTP email to: ${email}`);
+    const info = await transport.sendMail({
+      from: `"Ca Prep Series" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject,
+      text: `Your OTP is: ${otp}\n\nThis code expires in 10 minutes. Do not share it with anyone.`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
         <div style="background: #1e3a8a; padding: 20px; border-radius: 12px 12px 0 0; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 22px;">Ca Prep Series</h1>
@@ -68,13 +83,20 @@ const sendOtpEmail = async (email, otp, type = 'login') => {
         </div>
       </div>
     `,
-  });
+    });
 
-  if (!process.env.SMTP_HOST) {
-    console.log('[Mailer] OTP email preview:', nodemailer.getTestMessageUrl(info));
+    console.log(`[Mailer] ✓ OTP email sent successfully to ${email}`);
+    console.log(`[Mailer] Message ID: ${info.messageId}`);
+
+    if (!process.env.SMTP_HOST) {
+      console.log('[Mailer] OTP email preview:', nodemailer.getTestMessageUrl(info));
+    }
+
+    return info;
+  } catch (error) {
+    console.error(`[Mailer] ✗ Failed to send OTP email to ${email}:`, error.message);
+    throw error;
   }
-
-  return info;
 };
 
 /**
@@ -92,12 +114,16 @@ const sendPurchaseConfirmationEmail = async (email, firstName, seriesTitle, amou
   const discountAmount = originalPrice - amount;
   const discountText = discountPercent > 0 ? `<p style="color: #059669; font-size: 14px;"><strong>Discount Applied:</strong> ${discountPercent}% off (₹${discountAmount.toFixed(2)} saved)</p>` : '';
 
-  const info = await transport.sendMail({
-    from: `"Ca Prep Series" <${process.env.SMTP_USER}>`,
-    to: email,
-    subject: `Purchase Confirmation - ${seriesTitle} - Ca Prep Series`,
-    text: `Hi ${firstName},\n\nThank you for your purchase!\n\nTest Series: ${seriesTitle}\nAmount Paid: ₹${amount.toFixed(2)}\n\nYou now have access to all tests in this series. Log in to your account to start practicing.\n\nBest regards,\nCa Prep Series Team`,
-    html: `
+  try {
+    console.log(`[Mailer] Sending purchase confirmation email to: ${email}`);
+    console.log(`[Mailer] Series: ${seriesTitle}, Amount: ₹${amount}, Discount: ${discountPercent}%`);
+
+    const info = await transport.sendMail({
+      from: `"Ca Prep Series" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: `Purchase Confirmation - ${seriesTitle} - Ca Prep Series`,
+      text: `Hi ${firstName},\n\nThank you for your purchase!\n\nTest Series: ${seriesTitle}\nAmount Paid: ₹${amount.toFixed(2)}\n\nYou now have access to all tests in this series. Log in to your account to start practicing.\n\nBest regards,\nCa Prep Series Team`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
         <div style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 24px;">Ca Prep Series</h1>
@@ -150,13 +176,21 @@ const sendPurchaseConfirmationEmail = async (email, firstName, seriesTitle, amou
         </div>
       </div>
     `,
-  });
+    });
 
-  if (!process.env.SMTP_HOST) {
-    console.log('[Mailer] Purchase confirmation email preview:', nodemailer.getTestMessageUrl(info));
+    console.log(`[Mailer] ✓ Purchase confirmation email sent successfully to ${email}`);
+    console.log(`[Mailer] Message ID: ${info.messageId}`);
+
+    if (!process.env.SMTP_HOST) {
+      console.log('[Mailer] Purchase confirmation email preview:', nodemailer.getTestMessageUrl(info));
+    }
+
+    return info;
+  } catch (error) {
+    console.error(`[Mailer] ✗ Failed to send purchase confirmation email to ${email}:`, error.message);
+    console.error('[Mailer] Error details:', error);
+    throw error;
   }
-
-  return info;
 };
 
 module.exports = { sendOtpEmail, sendPurchaseConfirmationEmail };

@@ -13,17 +13,28 @@ function applyCouponDiscount(amount, discountPercent) {
 
 async function sendConfirmationEmail(userId, testSeriesId, amount, discountPercent, originalPrice) {
   try {
+    console.log(`[Purchase] Sending confirmation email for user ${userId}, series ${testSeriesId}`);
+    
     // Get user details
     const userRes = await pool.query('SELECT first_name, email FROM users WHERE id = $1', [userId]);
-    if (userRes.rows.length === 0) return;
+    if (userRes.rows.length === 0) {
+      console.log(`[Purchase] User ${userId} not found`);
+      return;
+    }
     const user = userRes.rows[0];
+    console.log(`[Purchase] User email: ${user.email}`);
 
     // Get series details
     const seriesRes = await pool.query('SELECT title FROM test_series WHERE id = $1', [testSeriesId]);
-    if (seriesRes.rows.length === 0) return;
+    if (seriesRes.rows.length === 0) {
+      console.log(`[Purchase] Series ${testSeriesId} not found`);
+      return;
+    }
     const series = seriesRes.rows[0];
+    console.log(`[Purchase] Series title: ${series.title}`);
 
     // Send email
+    console.log(`[Purchase] Calling sendPurchaseConfirmationEmail...`);
     await sendPurchaseConfirmationEmail(
       user.email,
       user.first_name,
@@ -32,8 +43,10 @@ async function sendConfirmationEmail(userId, testSeriesId, amount, discountPerce
       discountPercent || 0,
       originalPrice
     );
+    console.log(`[Purchase] ✓ Confirmation email sent successfully`);
   } catch (error) {
     console.error('[Purchase] Error sending confirmation email:', error.message);
+    console.error('[Purchase] Error stack:', error.stack);
     // Don't throw - email failure shouldn't block purchase
   }
 }
@@ -244,6 +257,9 @@ router.post('/razorpay/order', requireAuth, asyncHandler(async (req, res) => {
 
     const purchase = result.rows[0];
     purchase.test_series = series;
+
+    // Send confirmation email
+    await sendConfirmationEmail(req.user.id, testSeriesId, 0, discountPercent, parseFloat(series.price));
 
     return res.status(201).json({
       purchase,
